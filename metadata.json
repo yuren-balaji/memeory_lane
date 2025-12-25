@@ -1,0 +1,8 @@
+{
+  "name": "MemoryLane",
+  "description": "A high-performance, local-first note-taking application featuring Git-style versioning, mind maps, voice transcription, and an integrated local machine learning engine for emotional analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
