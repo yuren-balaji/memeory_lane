@@ -1,23 +1,8 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  Save, 
-  History, 
-  GitCommit, 
-  GitPullRequest, 
-  Mic, 
-  Image as ImageIcon,
-  CheckCircle,
-  X,
-  Plus,
-  ArrowLeft,
-  Terminal,
-  Volume2,
-  Package
-} from 'lucide-react';
-import { Note, Commit, Branch, Asset } from '../types';
+import React, { useState, useEffect } from 'react';
+import { History, GitCommit, GitPullRequest, Mic, Image as ImageIcon, X, Zap, Cpu, Layers } from 'lucide-react';
+import { Note, Commit, Branch, MLModelType } from '../types';
 import { mlEngine } from '../services/mlEngine';
-import JSZip from 'jszip';
 
 interface EditorProps {
   note: Note;
@@ -26,211 +11,85 @@ interface EditorProps {
 
 const Editor: React.FC<EditorProps> = ({ note, onUpdate }) => {
   const [content, setContent] = useState('');
-  const [commitMessage, setCommitMessage] = useState('');
   const [showHistory, setShowHistory] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
   
   const currentBranch = note.branches[note.activeBranch];
   const headCommit = currentBranch.commits.find(c => c.id === currentBranch.head);
 
   useEffect(() => {
-    if (headCommit) {
-      setContent(headCommit.content);
+    if (headCommit) setContent(headCommit.content);
+    // Update recommendation whenever content changes significantly
+    const rec = mlEngine.getRecommendation(content);
+    if (rec !== note.config.recommendedModel) {
+      onUpdate({ ...note, config: { ...note.config, recommendedModel: rec } });
     }
   }, [note.id, note.activeBranch, headCommit]);
 
-  const handleSave = async (msg = 'Manual Save') => {
+  const handleSave = async () => {
     setIsAnalyzing(true);
-    
-    // ML Analysis in separate "thread" (simulated)
-    const analysis = await mlEngine.analyzeNote(content);
-    
-    const newCommit: Commit = {
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      content: content,
-      author: 'User',
-      message: msg || commitMessage || `Updated on ${new Date().toLocaleString()}`,
-      parentId: headCommit?.id || null,
-      analysis: analysis
-    };
-
-    const updatedBranch: Branch = {
-      ...currentBranch,
-      commits: [...currentBranch.commits, newCommit],
-      head: newCommit.id
-    };
-
-    const updatedNote: Note = {
-      ...note,
-      updatedAt: Date.now(),
-      branches: {
-        ...note.branches,
-        [note.activeBranch]: updatedBranch
-      }
-    };
-
-    onUpdate(updatedNote);
-    setCommitMessage('');
-    setIsAnalyzing(false);
+    try {
+      const analysis = await mlEngine.analyzeNote(content, note.config.preferredModel);
+      const newCommit: Commit = {
+        id: crypto.randomUUID(), timestamp: Date.now(), content, author: 'User', 
+        message: 'Neural Update', parentId: headCommit?.id || null, analysis
+      };
+      const updatedBranch = { ...currentBranch, commits: [...currentBranch.commits, newCommit], head: newCommit.id };
+      onUpdate({ ...note, updatedAt: Date.now(), branches: { ...note.branches, [note.activeBranch]: updatedBranch } });
+    } finally { setIsAnalyzing(false); }
   };
 
-  const handleCreateBranch = () => {
-    const branchName = prompt('Enter new branch name:');
-    if (!branchName || note.branches[branchName]) return;
-
-    const newBranch: Branch = {
-      name: branchName,
-      commits: [...currentBranch.commits],
-      head: currentBranch.head
-    };
-
-    onUpdate({
-      ...note,
-      activeBranch: branchName,
-      branches: {
-        ...note.branches,
-        [branchName]: newBranch
-      }
-    });
-  };
-
-  const toggleRecording = () => {
-    if (!isRecording) {
-      setIsRecording(true);
-      // Mock Speech to Text
-      setTimeout(() => {
-        setContent(prev => prev + ' [Audio Transcript: Thinking about my goals for this year.]');
-        setIsRecording(false);
-      }, 3000);
-    }
-  };
-
-  const handleSpeak = () => {
-    const speech = new SpeechSynthesisUtterance(content);
-    window.speechSynthesis.speak(speech);
-  };
-
-  const exportZip = async () => {
-    const zip = new JSZip();
-    zip.file('note_content.txt', content);
-    zip.file('metadata.json', JSON.stringify(note, null, 2));
-    
-    const commitsFolder = zip.folder('history');
-    currentBranch.commits.forEach(c => {
-      commitsFolder?.file(`${c.timestamp}.json`, JSON.stringify(c, null, 2));
-    });
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${note.title.replace(/\s+/g, '_')}_memorylane.zip`;
-    a.click();
-  };
+  const models: { id: MLModelType; label: string; desc: string }[] = [
+    { id: 'logistic-regression', label: 'Logistic Regression', desc: 'Best for short snippets' },
+    { id: 'random-forest-lite', label: 'Random Forest Ensemble', desc: 'Robust for medium drafts' },
+    { id: 'lstm-neural', label: 'LSTM Sequence', desc: 'Deep contextual journals' }
+  ];
 
   return (
-    <div className="flex h-full bg-white relative">
-      <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+    <div className="flex h-full bg-white dark:bg-slate-950 relative">
+      <div className="flex-1 flex flex-col p-10 overflow-y-auto">
         <textarea 
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="flex-1 w-full text-lg leading-relaxed text-gray-800 placeholder-gray-300 border-none focus:ring-0 resize-none mono"
-          placeholder="Unleash your creativity..."
+          value={content} onChange={(e) => setContent(e.target.value)}
+          className="flex-1 w-full text-lg leading-relaxed text-slate-800 dark:text-slate-200 border-none focus:ring-0 resize-none mono bg-transparent"
+          placeholder="Unleash your mind..."
         />
 
-        {/* Toolbar */}
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border border-gray-200 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 z-20">
-          <button 
-            onClick={toggleRecording}
-            className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'hover:bg-gray-100 text-gray-500'}`}
-          >
-            <Mic size={20} />
-          </button>
-          <button onClick={() => {}} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
-            <ImageIcon size={20} />
-          </button>
-          <div className="w-px h-6 bg-gray-200 mx-2" />
-          <button onClick={handleSpeak} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
-            <Volume2 size={20} />
-          </button>
-          <button onClick={() => {}} className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
-            <History size={20} />
-          </button>
-          <button 
-            onClick={() => handleSave()}
-            disabled={isAnalyzing}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
-          >
-            {isAnalyzing ? (
-              <span className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Thinking...
-              </span>
-            ) : (
-              <>
-                <GitCommit size={18} />
-                <span>Commit</span>
-              </>
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 px-8 py-4 rounded-[2.5rem] shadow-2xl flex items-center gap-6 z-20">
+          <div className="relative">
+            <button 
+              onClick={() => setShowModelMenu(!showModelMenu)}
+              className="flex items-center gap-2 p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl text-brand-500 font-bold text-xs"
+            >
+              <Cpu size={18} />
+              <span>{note.config.preferredModel.replace('-', ' ').toUpperCase()}</span>
+            </button>
+            {showModelMenu && (
+              <div className="absolute bottom-full mb-4 left-0 w-64 bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-3xl shadow-2xl p-2 animate-in slide-in-from-bottom-2">
+                <div className="p-3 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b dark:border-slate-800 mb-2">Select Architecture</div>
+                {models.map(m => (
+                  <button 
+                    key={m.id} onClick={() => { onUpdate({ ...note, config: { ...note.config, preferredModel: m.id } }); setShowModelMenu(false); }}
+                    className={`w-full text-left p-3 rounded-2xl transition-all ${note.config.preferredModel === m.id ? 'bg-brand-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold">{m.label}</span>
+                      {note.config.recommendedModel === m.id && <Zap size={10} className="text-yellow-400 fill-yellow-400"/>}
+                    </div>
+                    <div className={`text-[10px] ${note.config.preferredModel === m.id ? 'text-brand-100' : 'text-slate-500'}`}>{m.desc}</div>
+                  </button>
+                ))}
+              </div>
             )}
+          </div>
+          <div className="w-px h-8 bg-slate-200 dark:bg-slate-800" />
+          <button onClick={() => setShowHistory(!showHistory)} className="p-3 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl text-slate-400"><History size={22} /></button>
+          <button onClick={handleSave} disabled={isAnalyzing} className="flex items-center gap-3 bg-brand-600 text-white px-8 py-3 rounded-3xl shadow-xl font-bold">
+            {isAnalyzing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <GitCommit size={20} />}
+            <span>Commit Thought</span>
           </button>
         </div>
       </div>
-
-      {/* History / Git Sidebar */}
-      {showHistory && (
-        <div className="w-80 border-l border-gray-200 bg-gray-50 flex flex-col animate-in slide-in-from-right duration-300">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
-            <h3 className="font-semibold text-sm flex items-center gap-2">
-              <History size={16} /> History
-            </h3>
-            <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded">
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="p-4 space-y-4">
-            <button 
-              onClick={handleCreateBranch}
-              className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-all flex items-center justify-center gap-2"
-            >
-              <GitPullRequest size={14} /> New Branch
-            </button>
-
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recent Commits</label>
-              <div className="space-y-2">
-                {[...currentBranch.commits].reverse().map(commit => (
-                  <div key={commit.id} className="p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-indigo-300 transition-colors group">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-xs font-semibold text-gray-700 truncate mr-2">{commit.message}</span>
-                      <span className="text-[9px] text-gray-400 whitespace-nowrap">{new Date(commit.timestamp).toLocaleTimeString()}</span>
-                    </div>
-                    <p className="text-[10px] text-gray-500 line-clamp-2 italic mb-2">"{commit.content.slice(0, 50)}..."</p>
-                    {commit.analysis && (
-                      <div className="flex gap-1">
-                        <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px]">
-                          {commit.analysis.emotion}
-                        </span>
-                        <span className="px-1.5 py-0.5 bg-green-50 text-green-600 rounded text-[9px]">
-                          {commit.analysis.sentiment}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-auto p-4 border-t border-gray-200 space-y-2">
-            <button onClick={exportZip} className="w-full py-2 bg-gray-800 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-2 hover:bg-gray-900">
-              <Package size={14} /> Export memory.zip
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

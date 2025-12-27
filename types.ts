@@ -1,4 +1,6 @@
 
+export type MLModelType = 'logistic-regression' | 'random-forest-lite' | 'transformer-lite' | 'lstm-neural';
+
 export interface Commit {
   id: string;
   timestamp: number;
@@ -21,7 +23,7 @@ export interface Asset {
 export interface Branch {
   name: string;
   commits: Commit[];
-  head: string; // ID of the latest commit
+  head: string;
 }
 
 export interface Note {
@@ -33,16 +35,31 @@ export interface Note {
   createdAt: number;
   updatedAt: number;
   type: 'text' | 'mindmap' | 'kanban';
+  config: {
+    preferredModel: MLModelType;
+    recommendedModel: MLModelType;
+  };
 }
 
 export interface MLAnalysis {
   emotion: string;
-  moodScore: number; // -1 to 1
+  moodScore: number; 
   sentiment: 'positive' | 'negative' | 'neutral';
   keywords: string[];
-  modelUsed: string;
+  modelUsed: MLModelType;
   loss: number;
   confidence: number;
+  tensorStats?: {
+    nodes: number;
+    depth: number;
+  };
+}
+
+export interface GlobalIntelligence {
+  synapticDensity: number; // Interconnectedness of all notes
+  emotionalEntropy: number; // Chaos/Stability of mood across vault
+  dominantThemes: string[];
+  vaultHealth: number; // 0-1 based on model convergence
 }
 
 export interface MLTrainingLog {

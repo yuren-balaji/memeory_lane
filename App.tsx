@@ -1,26 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Book, 
-  Plus, 
-  Search, 
-  Trash2, 
-  Settings, 
-  Share2, 
-  GitBranch, 
-  Activity, 
-  Mic, 
-  Image as ImageIcon,
-  ChevronRight,
-  ChevronDown,
-  Save,
-  Clock,
-  Layout,
-  Share,
-  FileText,
-  Package
+  Book, Plus, Search, Trash2, Settings, Share2, GitBranch, 
+  Activity, Mic, Image as ImageIcon, ChevronRight, Sun, Moon, Zap, Brain, Globe
 } from 'lucide-react';
-import { Note, Commit, Branch, MLAnalysis } from './types';
+import { Note, Commit, Branch, MLAnalysis, GlobalIntelligence } from './types';
 import { getAllNotesFromDB, saveNoteToDB, deleteNoteFromDB } from './services/db';
 import { mlEngine } from './services/mlEngine';
 import Editor from './components/Editor';
@@ -34,49 +18,54 @@ const App: React.FC = () => {
   const [showMLStats, setShowMLStats] = useState(false);
   const [viewMode, setViewMode] = useState<'text' | 'graph'>('text');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [globalIntel, setGlobalIntel] = useState<GlobalIntelligence | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(() => 
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
 
-  // Initialize data
   useEffect(() => {
-    const loadNotes = async () => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    const loadData = async () => {
       const stored = await getAllNotesFromDB();
       if (stored && stored.length > 0) {
         setNotes(stored);
+        const intel = await mlEngine.analyzeVault(stored);
+        setGlobalIntel(intel);
       } else {
-        // Create initial welcome note
-        const initialNote = createNewNote('Welcome to MemoryLane');
-        setNotes([initialNote]);
-        saveNoteToDB(initialNote);
+        const initial = createNewNote('Cognitive Origin');
+        setNotes([initial]);
+        saveNoteToDB(initial);
       }
     };
-    loadNotes();
+    loadData();
   }, []);
 
-  const createNewNote = (title = 'Untitled Note', type: 'text' | 'mindmap' = 'text'): Note => {
+  const createNewNote = (title = 'New Memory'): Note => {
     const id = crypto.randomUUID();
     const firstCommit: Commit = {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
-      content: type === 'text' ? 'Start writing your thoughts...' : '{}',
+      content: 'Synthesizing ideas...',
       author: 'User',
-      message: 'Initial Commit',
+      message: 'Neural Seed',
       parentId: null
     };
 
-    const mainBranch: Branch = {
-      name: 'main',
-      commits: [firstCommit],
-      head: firstCommit.id
-    };
-
     return {
-      id,
-      title,
-      branches: { 'main': mainBranch },
+      id, title,
+      branches: { 'main': { name: 'main', commits: [firstCommit], head: firstCommit.id } },
       activeBranch: 'main',
       tags: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      type: type === 'text' ? 'text' : 'mindmap'
+      type: 'text',
+      config: {
+        preferredModel: 'logistic-regression',
+        recommendedModel: 'logistic-regression'
+      }
     };
   };
 
@@ -87,176 +76,105 @@ const App: React.FC = () => {
     saveNoteToDB(newNote);
   };
 
-  const activeNote = useMemo(() => 
-    notes.find(n => n.id === activeNoteId), 
-    [notes, activeNoteId]
-  );
+  const activeNote = useMemo(() => notes.find(n => n.id === activeNoteId), [notes, activeNoteId]);
 
   const handleUpdateNote = async (updatedNote: Note) => {
     const updatedNotes = notes.map(n => n.id === updatedNote.id ? updatedNote : n);
     setNotes(updatedNotes);
     await saveNoteToDB(updatedNote);
+    // Refresh global insights on every update
+    const intel = await mlEngine.analyzeVault(updatedNotes);
+    setGlobalIntel(intel);
   };
 
-  const handleDeleteNote = async (id: string) => {
-    const updated = notes.filter(n => n.id !== id);
-    setNotes(updated);
-    if (activeNoteId === id) setActiveNoteId(updated[0]?.id || null);
-    await deleteNoteFromDB(id);
-  };
-
-  const filteredNotes = notes.filter(n => 
-    n.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredNotes = useMemo(() => {
+    if (!searchQuery) return notes;
+    const q = searchQuery.toLowerCase();
+    return notes.filter(n => 
+      n.title.toLowerCase().includes(q) || 
+      n.branches[n.activeBranch].commits.slice(-1)[0].analysis?.emotion.toLowerCase().includes(q)
+    );
+  }, [notes, searchQuery]);
 
   return (
-    <div className="flex h-screen w-full bg-gray-50 overflow-hidden">
-      {/* Sidebar */}
-      <aside className={`transition-all duration-300 bg-white border-r border-gray-200 flex flex-col ${isSidebarOpen ? 'w-72' : 'w-0 opacity-0'}`}>
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-indigo-600">
-            <Book size={20} />
-            <span>MemoryLane</span>
+    <div className="flex h-screen w-full bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-500 overflow-hidden">
+      <aside className={`transition-all duration-300 bg-gray-50 dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col ${isSidebarOpen ? 'w-80' : 'w-0 opacity-0 overflow-hidden'}`}>
+        <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900/50">
+          <div className="flex items-center gap-3">
+            <div className="bg-brand-600 p-2 rounded-xl shadow-lg">
+              <Brain className="text-white" size={20} />
+            </div>
+            <span className="font-bold tracking-tight text-lg">MemoryLane</span>
           </div>
-          <button onClick={handleAddNote} className="p-1 hover:bg-gray-100 rounded text-gray-500">
-            <Plus size={18} />
-          </button>
-        </div>
-
-        <div className="p-3">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 text-gray-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search notes..." 
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-100 border-none rounded-lg focus:ring-2 focus:ring-indigo-500"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="flex gap-1">
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-lg text-slate-500"><Sun size={18} /></button>
+            <button onClick={handleAddNote} className="p-2 bg-brand-600 hover:bg-brand-700 rounded-lg text-white shadow-md"><Plus size={18} /></button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        {globalIntel && (
+          <div className="p-4 mx-4 my-2 bg-brand-600/5 border border-brand-500/20 rounded-2xl">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[10px] font-bold text-brand-500 uppercase flex items-center gap-1"><Globe size={10}/> Vault Sync</span>
+              <span className="text-[10px] text-brand-400">{(globalIntel.synapticDensity * 100).toFixed(0)}% Dense</span>
+            </div>
+            <div className="h-1 bg-brand-200 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full bg-brand-500" style={{ width: `${globalIntel.vaultHealth * 100}%` }} />
+            </div>
+          </div>
+        )}
+
+        <div className="p-4"><div className="relative group">
+          <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+          <input type="text" placeholder="Search cognitive clusters..." className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        </div></div>
+
+        <div className="flex-1 overflow-y-auto px-2 space-y-1">
           {filteredNotes.map(note => (
-            <div 
-              key={note.id}
-              onClick={() => setActiveNoteId(note.id)}
-              className={`group px-4 py-3 cursor-pointer border-l-4 transition-colors ${activeNoteId === note.id ? 'bg-indigo-50 border-indigo-500' : 'border-transparent hover:bg-gray-50'}`}
-            >
-              <div className="flex justify-between items-start">
-                <h3 className={`text-sm font-medium truncate ${activeNoteId === note.id ? 'text-indigo-700' : 'text-gray-700'}`}>
-                  {note.title || 'Untitled'}
-                </h3>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id); }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded text-red-500"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-gray-400">{new Date(note.updatedAt).toLocaleDateString()}</span>
-                <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 rounded">{note.type}</span>
+            <div key={note.id} onClick={() => setActiveNoteId(note.id)} className={`group px-4 py-3 cursor-pointer rounded-xl transition-all border ${activeNoteId === note.id ? 'bg-white dark:bg-slate-800 border-brand-200 dark:border-brand-900 shadow-md translate-x-1' : 'border-transparent hover:bg-white dark:hover:bg-slate-800/50'}`}>
+              <h3 className={`text-sm font-semibold truncate ${activeNoteId === note.id ? 'text-brand-600 dark:text-brand-400' : 'text-slate-600 dark:text-slate-400'}`}>{note.title}</h3>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-[10px] text-slate-400 font-medium">{note.branches[note.activeBranch].commits.slice(-1)[0].analysis?.emotion || 'Analyzing...'}</span>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="p-4 border-t border-gray-100">
-          <button 
-            onClick={() => setShowMLStats(!showMLStats)}
-            className="flex items-center gap-2 text-xs font-medium text-gray-500 hover:text-indigo-600 transition-colors w-full"
-          >
-            <Activity size={14} />
-            <span>ML Analysis Engine</span>
+        <div className="p-4 border-t dark:border-slate-800">
+          <button onClick={() => setShowMLStats(!showMLStats)} className="flex items-center gap-3 text-xs font-semibold text-slate-500 hover:text-brand-600 w-full p-2">
+            <Activity size={16} /> <span>Vault Intelligence Core</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-hidden bg-white">
-        {/* Toggle Sidebar Button */}
-        <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 bg-white border border-gray-200 p-1 rounded-r-md z-10 shadow-sm hover:bg-gray-50 transition-colors"
-        >
-          {isSidebarOpen ? <ChevronRight size={14} className="rotate-180" /> : <ChevronRight size={14} />}
+      <main className="flex-1 flex flex-col relative overflow-hidden bg-white dark:bg-slate-950">
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="absolute left-0 top-1/2 -translate-y-1/2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1.5 rounded-r-xl z-10 shadow-lg border-l-0">
+          <ChevronRight size={16} className={isSidebarOpen ? 'rotate-180' : ''} />
         </button>
 
         {activeNote ? (
           <>
-            <header className="h-14 border-b border-gray-200 px-6 flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1">
-                <input 
-                  type="text" 
-                  value={activeNote.title}
-                  onChange={(e) => handleUpdateNote({ ...activeNote, title: e.target.value })}
-                  className="text-lg font-semibold bg-transparent border-none focus:ring-0 text-gray-800"
-                  placeholder="Note title..."
-                />
-                <div className="flex items-center bg-gray-100 rounded-lg p-1">
-                  <button 
-                    onClick={() => setViewMode('text')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all ${viewMode === 'text' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
-                  >
-                    Editor
-                  </button>
-                  <button 
-                    onClick={() => setViewMode('graph')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all ${viewMode === 'graph' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
-                  >
-                    Brain Map
-                  </button>
+            <header className="h-16 border-b dark:border-slate-800 px-8 flex items-center justify-between">
+              <div className="flex items-center gap-6 flex-1">
+                <input type="text" value={activeNote.title} onChange={(e) => handleUpdateNote({ ...activeNote, title: e.target.value })} className="text-xl font-bold bg-transparent border-none focus:ring-0 w-full max-w-md" />
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+                  <button onClick={() => setViewMode('text')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'text' ? 'bg-white dark:bg-slate-700 shadow-md text-brand-600' : 'text-slate-500'}`}>Editor</button>
+                  <button onClick={() => setViewMode('graph')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'graph' ? 'bg-white dark:bg-slate-700 shadow-md text-brand-600' : 'text-slate-500'}`}>Neural Map</button>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
-                  <GitBranch size={14} />
-                  <span>{activeNote.activeBranch}</span>
-                </div>
-                <button className="p-2 hover:bg-gray-100 rounded-full text-gray-500 tooltip" title="Share">
-                  <Share2 size={18} />
-                </button>
               </div>
             </header>
-
             <div className="flex-1 overflow-hidden relative">
-              {viewMode === 'text' ? (
-                <Editor 
-                  note={activeNote} 
-                  onUpdate={handleUpdateNote} 
-                />
-              ) : (
-                <NodeGraph 
-                  note={activeNote}
-                  onUpdate={handleUpdateNote}
-                />
-              )}
+              {viewMode === 'text' ? <Editor note={activeNote} onUpdate={handleUpdateNote} /> : <NodeGraph note={activeNote} onUpdate={handleUpdateNote} />}
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-4">
-            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center">
-              <Book size={40} className="text-gray-200" />
-            </div>
-            <p>Select a note or create a new one to begin your journey.</p>
-            <button 
-              onClick={handleAddNote}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg"
-            >
-              Start Recording Memories
-            </button>
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+            <Zap size={56} className="text-brand-500" />
+            <h2 className="text-2xl font-bold">Initiate Cognition</h2>
+            <button onClick={handleAddNote} className="px-8 py-3 bg-brand-600 text-white rounded-2xl shadow-xl font-bold flex items-center gap-2"><Plus size={20} /> New Thought Stream</button>
           </div>
         )}
-
-        {/* Floating ML Analytics Panel */}
-        {showMLStats && (
-          <MLDashboard 
-            onClose={() => setShowMLStats(false)} 
-            analysis={activeNote?.branches[activeNote.activeBranch].commits.slice(-1)[0]?.analysis}
-          />
-        )}
+        {showMLStats && <MLDashboard onClose={() => setShowMLStats(false)} analysis={activeNote?.branches[activeNote.activeBranch].commits.slice(-1)[0]?.analysis} globalIntel={globalIntel} />}
       </main>
     </div>
   );
